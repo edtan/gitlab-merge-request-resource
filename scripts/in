@@ -27,8 +27,11 @@ uri="$(jq -r '.source.uri // ""' < "${payload}")"
 username="$(jq -r '.source.username // ""' < "${payload}")"
 password="$(jq -r '.source.password // ""' < "${payload}")"
 private_key="$(jq -r '.source.private_key // ""' < "${payload}")"
+private_token="$(jq -r '.source.private_token // ""' < "${payload}")"
+no_ssl="$(jq -r '.source.no_ssl // ""' < "${payload}")"
 version="$(jq -r '.version // ""' < "${payload}")"
 commit_sha="$(echo "${version}" | jq -r '.sha // ""')"
+commit_project_id="$(echo "${version}" | jq -r '.project_id // ""')"
 
 if [[ ! -z "${private_key}" ]]; then
     gitlab_host="$(echo "${uri}" | sed -rn 's/.*git@(.*):([0-9]*\/+)?(.*)\.git/\1/p')"
@@ -49,7 +52,26 @@ else
     echo "default login ${username} password ${password}" > "${HOME}/.netrc" # Save credentials for git push below
 fi
 
-git clone "${uri}" "${destination}"
+if [[ "${uri}" == *"git@"* ]]; then
+  gitlab_host="$(echo "${uri}" | sed -rn 's/.*git@(.*):([0-9]*\/+)?(.*)\.git/\1/p')"
+  port="$(echo "${uri}" | sed -rn 's/.*git@(.*):([0-9]*\/+)?(.*)\.git/\2/p')"
+  port=${port///} # remove trailing slash
+  project_path="$(echo "${uri}" | sed -rn 's/.*git@(.*):([0-9]*\/+)?(.*)\.git/\3/p')"
+  protocol='https'
+else
+  gitlab_host="$(echo "${uri}" | sed -rn 's/(https?):\/\/([^\/]*)\/(.*)\.git/\2/p')"
+  project_path="$(echo "${uri}" | sed -rn 's/(https?):\/\/([^\/]*)\/(.*)\.git/\3/p')"
+  protocol="$(echo "${uri}" | sed -rn 's/(https?):\/\/([^\/]*)\/(.*)\.git/\1/p')"
+fi
+
+if [ "${no_ssl}" == 'true' ]; then
+    protocol='http'
+fi
+
+ssh_project_uri="$(curl -s -H "private-token: ${private_token}" "${protocol}://${gitlab_host}/api/v4/projects/${commit_project_id}" \
+  | jq -r '.ssh_url_to_repo')"
+
+git clone "${ssh_project_uri}" "${destination}"
 
 cd "${destination}"
 

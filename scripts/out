@@ -65,14 +65,27 @@ cd "${path_to_repo}"
 
 commit_sha="$(git rev-parse HEAD)"
 
+# Find project id of merge request
+version_project_id=-1
+open_mrs="$(curl -s -H "private-token: ${private_token}" "${protocol}://${gitlab_host}/api/v4/projects/$(urlencode "${project_path}")/merge_requests?state=opened&order_by=updated_at")"
+num_mrs="$(echo "${open_mrs}" | jq 'length')"
+for i in $(seq 0 $((num_mrs - 1))); do
+    mr="$(echo "${open_mrs}" | jq -r '.['"$i"']')"
+    mr_project_id="$(echo "${mr}" | jq -r '.source_project_id')"
+    mr_sha="$(echo "${mr}" | jq -r '.sha')"
+    if [ "${mr_sha}" == "${commit_sha}" ]; then
+      version_project_id="$mr_project_id"
+    fi
+done
+
 curl \
     --request POST \
     --header "PRIVATE-TOKEN: ${private_token}" \
     --header 'Content-Type: application/json' \
     --data "{\"state\":\"${new_status}\",\"name\":\"${build_label}\",\"target_url\":\"${target_url}\"}" \
-    "${protocol}://${gitlab_host}/api/v4/projects/$(urlencode "${project_path}")/statuses/${commit_sha}"
+    "${protocol}://${gitlab_host}/api/v4/projects/${version_project_id}/statuses/${commit_sha}"
 
-version="{\"sha\":\"${commit_sha}\"}"
+version="{\"sha\":\"${commit_sha}\",\"project_id\":\"${version_project_id}\"}"
 
 jq -n "{
     version: ${version},
