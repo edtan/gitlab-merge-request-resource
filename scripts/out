@@ -77,6 +77,11 @@ for i in $(seq 0 $((num_mrs - 1))); do
       version_project_id="$mr_project_id"
     fi
 done
+if [ "${version_project_id}" -eq "-1" ]; then
+  echo "Could not find the merge request's source_project_id.  The following are the open_mrs that were detected:"
+  echo "${open_mrs}"
+  exit 2
+fi
 
 curl \
     --request POST \
